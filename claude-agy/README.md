@@ -52,6 +52,19 @@ agy -p "give me a file map of this project"
 agy -p "explain what this function does" -f src/main.go
 ```
 
+## CodeGraph Integration
+
+This sandbox includes CodeGraph pre-installed for advanced semantic code search and dependency mapping.
+
+**First-time setup:**
+Because the CodeGraph MCP server registers itself with `agy`, you must run the setup script *after* `agy` is fully initialized and logged in.
+
+Upon logging into the container for the first time, perform these steps in order:
+1. Run `agy login`
+2. Run `codegraph-setup`
+
+*Note: The `codegraph` MCP tools are already pre-approved in `agy`'s settings, so the agent can invoke them immediately without interactive prompts.*
+
 ## Authentication
 
 The `agy` binary requires a Google API key at runtime. Set it as a sandbox

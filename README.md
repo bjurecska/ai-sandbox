@@ -1,6 +1,6 @@
 # Sandboxed Docker Templates Repository
 
-This repository contains Docker sandbox templates and scripts for building and managing container environments with [`sbx`](https://github.com/docker/sandbox).
+This repository contains Docker sandbox templates and scripts for building and managing container environments with [`sbx`](https://docs.docker.com/).
 
 ## Repository Structure
 
@@ -40,16 +40,16 @@ Follow these steps to build the template, synchronize network egress policies fo
    ```
    *Builds the image, exports a tar archive, loads it into `sbx`, and applies global network policy baselines.*
 
-2. **Apply Network Policy to the Sandbox Instance**:
+2. **Run the Sandboxed Container**:
+   ```bash
+   sbx run --template claude-code-agy:latest --name sandboxed-claude-agy claude
+   ```
+
+3. **Apply Network Policy to the Sandbox Instance**:
    ```bash
    ./apply_policy.sh claude-agy --sandbox sandboxed-claude-agy
    ```
    *Applies project-specific network allowlist rules from `claude-agy/sbx-policy.yaml` (and global baseline policies) to `sandboxed-claude-agy`.*
-
-3. **Run the Sandboxed Container**:
-   ```bash
-   sbx run --template claude-code-agy:latest --name sandboxed-claude-agy claude
-   ```
 
 ---
 
@@ -114,7 +114,7 @@ The root `build_and_load.sh` script automates the full template generation workf
 
 ## Running a Sandbox Instance
 
-Once the template is loaded and network policies are applied, launch a container session:
+Once the template is loaded, launch a container session. Note that you must start the container before you can apply project-specific network policies to it:
 
 ```bash
 sbx run --template claude-code-agy:latest --name sandboxed-claude-agy claude
