@@ -46,6 +46,8 @@ fi
 PROJECT_DIR=""
 TAG="latest"
 DRY_RUN=false
+CI_MODE=false
+CUSTOM_IMAGE_NAME=""
 
 # Parse Arguments
 while [[ $# -gt 0 ]]; do
@@ -53,6 +55,14 @@ while [[ $# -gt 0 ]]; do
         --dry-run)
             DRY_RUN=true
             shift
+            ;;
+        --ci)
+            CI_MODE=true
+            shift
+            ;;
+        --image-name)
+            CUSTOM_IMAGE_NAME="$2"
+            shift 2
             ;;
         -h|--help)
             show_help
@@ -90,7 +100,11 @@ if [[ ! -f "${TARGET_PATH}/Dockerfile" ]]; then
 fi
 
 PROJECT_NAME="$(basename "${TARGET_PATH}")"
-IMAGE_NAME="${PROJECT_NAME}:${TAG}"
+if [[ -n "${CUSTOM_IMAGE_NAME}" ]]; then
+    IMAGE_NAME="${CUSTOM_IMAGE_NAME}"
+else
+    IMAGE_NAME="${PROJECT_NAME}:${TAG}"
+fi
 TAR_FILE="${TARGET_PATH}/${PROJECT_NAME}-${TAG}.tar"
 
 echo "================================================================="
@@ -113,6 +127,12 @@ else
     else
         docker build -t "${IMAGE_NAME}" .
     fi
+fi
+
+if [[ "${CI_MODE}" == true ]]; then
+    echo ""
+    echo "    [Notice] --ci flag provided. Skipping image save and sbx template load."
+    exit 0
 fi
 
 # Step 2: Save Image Tarball
