@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Adds a workspace path to agy's trustedWorkspaces list for the current user.
+# agy matches trustedWorkspaces entries as literal absolute paths (no glob
+# support), so the workspace must be inserted explicitly at runtime — its
+# path inside the sandbox mirrors the host project path and is only known
+# once the sandbox is running.
+set -euo pipefail
+
+WORKSPACE="${1:-$PWD}"
+SETTINGS="$HOME/.gemini/antigravity-cli/settings.json"
+
+mkdir -p "$(dirname "$SETTINGS")"
+python3 - "$SETTINGS" "$WORKSPACE" <<'PYEOF'
+import json, sys
+
+path, workspace = sys.argv[1], sys.argv[2]
+try:
+    with open(path) as f:
+        settings = json.load(f)
+except (FileNotFoundError, json.JSONDecodeError):
+    settings = {}
+
+trusted = settings.setdefault("trustedWorkspaces", [])
+if workspace not in trusted:
+    trusted.append(workspace)
+    with open(path, "w") as f:
+        json.dump(settings, f, indent=2)
+PYEOF

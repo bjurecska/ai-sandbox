@@ -25,6 +25,16 @@ COPY --chown=1000:1000 scripts/codegraph-setup /home/agent/.local/bin/codegraph-
 RUN chmod +x /home/agent/.local/bin/codegraph-setup
 
 # ---------------------------------------------------------------------------
+# Workspace trust helper for agy
+# ---------------------------------------------------------------------------
+# agy matches trustedWorkspaces entries as literal absolute paths (no glob
+# support), so the workspace path must be added at runtime once it is known.
+# The login banner hook below calls this for the shell's starting directory.
+# ---------------------------------------------------------------------------
+COPY scripts/agy-trust-workspace /usr/local/bin/agy-trust-workspace
+RUN sudo chmod +x /usr/local/bin/agy-trust-workspace
+
+# ---------------------------------------------------------------------------
 # Install glab (GitLab CLI) — always fetches the latest release (.deb)
 # ---------------------------------------------------------------------------
 # Uses the GitLab releases permalink / API to discover the newest version,
@@ -141,6 +151,7 @@ RUN sudo mkdir -p /etc/profile.d \
     'if [ -z "${_BANNER_SHOWN:-}" ]; then' \
     '  if [ -t 0 ] || [ -t 1 ] || [ -n "${PS1:-}" ] || [ -n "${SSH_TTY:-}" ]; then' \
     '    export _BANNER_SHOWN=1' \
+    '    command -v agy-trust-workspace >/dev/null 2>&1 && agy-trust-workspace >/dev/null 2>&1' \
     '    echo ""' \
     '    echo "================================================================="' \
     '    echo " First Login Setup Instructions:"' \

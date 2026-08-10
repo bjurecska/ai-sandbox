@@ -8,19 +8,7 @@
     "termsAccepted": true,
     "noticeVersionConfirmed": 3,
     "enableTelemetry": false,
-    "trustedWorkspaces": [
-      "*",
-      "**",
-      "/",
-      "/*",
-      "/**",
-      "/Users",
-      "/Users/**",
-      "/home",
-      "/home/**",
-      "/workspace",
-      "/workspace/**"
-    ],
+    "trustedWorkspaces": [],
     "permissions": {
       "allow": [
         "read_file(**)",

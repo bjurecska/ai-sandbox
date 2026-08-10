@@ -11,19 +11,7 @@
   "terminal": "xterm-256color",
   "renderingMode": "alt-screen",
   "theme": "dark",
-  "trustedWorkspaces": [
-    "*",
-    "**",
-    "/",
-    "/*",
-    "/**",
-    "/Users",
-    "/Users/**",
-    "/home",
-    "/home/**",
-    "/workspace",
-    "/workspace/**"
-  ],
+  "trustedWorkspaces": [],
   "permissions": {
     "allow": [
       "read_file(**)",
