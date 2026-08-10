@@ -1,0 +1,76 @@
+# =============================================================================
+# SBX Network Policy Configuration - claude-agy
+# =============================================================================
+# Project-specific network policy rules for the Claude Code + Antigravity CLI sandbox.
+# Global Docker registry rules are defined in root sbx-policy-global.yaml.
+# =============================================================================
+
+version: "1.0"
+description: "Project-specific network policy rules for claude-agy sandbox"
+
+rules:
+  # ---------------------------------------------------------------------------
+  # Claude & Anthropic AI Services
+  # ---------------------------------------------------------------------------
+  - domain: "claude.ai"
+    description: "Claude Web interface"
+
+  - domain: "anthropic.com"
+    description: "Anthropic corporate domain & APIs"
+
+  - domain: "claude.com"
+    description: "Claude product domain"
+
+  - domain: "*.claude.com"
+    description: "Claude subdomains and services"
+
+  - domain: "api.anthropic.com"
+    description: "Anthropic Claude Model API endpoint"
+
+  # ---------------------------------------------------------------------------
+  # Google & Antigravity Ecosystem
+  # ---------------------------------------------------------------------------
+  - domain: "google.com"
+    description: "Google main domain"
+
+  - domain: "*.googleapis.com"
+    description: "Google Cloud APIs & Gemini API endpoints"
+
+  - domain: "*.googleusercontent.com"
+    description: "Google hosted assets and content delivery"
+
+  - domain: "antigravity.google"
+    description: "Google Antigravity CLI installer & script host"
+
+  - domain: "antigravity-unleash.goog"
+    description: "Google Antigravity Unleash service host"
+
+  - domain: "*.antigravity-unleash.goog"
+    description: "Google Antigravity Unleash service subdomains"
+
+  - domain: "*-974169037036.*.run.app"
+    description: "Google Antigravity Cloud Run release API (Project 974169037036)"
+
+  # ---------------------------------------------------------------------------
+  # GitHub & Code Repositories
+  # ---------------------------------------------------------------------------
+  - domain: "github.com"
+    description: "GitHub main repository platform"
+
+  - domain: "*.github.com"
+    description: "GitHub subdomains and API services"
+
+  - domain: "*.githubusercontent.com"
+    description: "GitHub raw content, CodeGraph scripts, and release assets"
+
+  # ---------------------------------------------------------------------------
+  # GitLab & Package Repositories
+  # ---------------------------------------------------------------------------
+  - domain: "gitlab.com"
+    description: "GitLab platform & CLI release permalinks"
+
+  - domain: "*.gitlab.com"
+    description: "GitLab subdomains and generic package downloads"
+
+  - domain: "ports.ubuntu.com"
+    description: "Ubuntu package repository mirror"

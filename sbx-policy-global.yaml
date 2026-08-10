@@ -1,0 +1,31 @@
+# =============================================================================
+# Global SBX Network Policy Configuration
+# =============================================================================
+# Baseline network policy rules applied globally across all Docker sandboxes.
+# Contains Docker registry and infrastructure domains required for container builds.
+# =============================================================================
+
+version: "1.0"
+description: "Global Docker registry network policy rules for Docker Sandbox (sbx)"
+
+rules:
+  # ---------------------------------------------------------------------------
+  # Docker & Container Registries
+  # ---------------------------------------------------------------------------
+  - domain: "docker.com"
+    description: "Docker main domain"
+
+  - domain: "*.docker.com"
+    description: "Docker subdomains & authentication"
+
+  - domain: "docker.io"
+    description: "Docker Hub image registry index"
+
+  - domain: "*.docker.io"
+    description: "Docker Hub registry subdomains & manifests"
+
+  - domain: "production.cloudflare.docker.com"
+    description: "Docker Hub image layer CDN (Cloudflare)"
+
+  - domain: "production.cloudfront.docker.com"
+    description: "Docker Hub image layer CDN (CloudFront)"

@@ -1,0 +1,43 @@
+{
+  "userSettings": {
+    "hasAcceptedTerms": true,
+    "hasCompletedOnboarding": true,
+    "hasTrustDialogAccepted": true,
+    "acceptedTerms": true,
+    "acceptedTermsOfService": true,
+    "termsAccepted": true,
+    "noticeVersionConfirmed": 3,
+    "enableTelemetry": false,
+    "trustedWorkspaces": [
+      "*",
+      "**",
+      "/",
+      "/*",
+      "/**",
+      "/Users",
+      "/Users/**",
+      "/home",
+      "/home/**",
+      "/workspace",
+      "/workspace/**"
+    ],
+    "permissions": {
+      "allow": [
+        "read_file(**)",
+        "read_file",
+        "search_web(**)",
+        "search_web",
+        "list_dir(**)",
+        "list_dir",
+        "grep_search(**)",
+        "grep_search",
+        "codegraph",
+        "mcp_codegraph",
+        "codegraph_*",
+        "mcp_codegraph_*",
+        "codegraph_*(**)",
+        "mcp_codegraph_*(**)"
+      ]
+    }
+  }
+}
