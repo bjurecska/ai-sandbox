@@ -28,15 +28,22 @@ jobs:
 
   build-and-push:
     needs: discover
-    runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
         project: ${{ fromJson(needs.discover.outputs.projects) }}
+        # Native runner per architecture: sbx on Apple Silicon boots arm64
+        # microVMs with no emulation, so an amd64-only image dies at start.
+        platform:
+          - arch: amd64
+            runner: ubuntu-latest
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.platform.runner }}
     permissions:
       contents: read
       packages: write
-    
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -48,32 +55,68 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and Push Image
+      - name: Build and Push Architecture Image
         env:
           PROJECT_NAME: ${{ matrix.project }}
+          ARCH: ${{ matrix.platform.arch }}
         run: |
           # Lowercase the repository name to adhere to Docker naming conventions
           REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
           REGISTRY="ghcr.io/$REPO_LOWER"
-          
-          echo "Processing project: $PROJECT_NAME"
-          
-          REMOTE_IMAGE_LATEST="${REGISTRY}/${PROJECT_NAME}:latest"
-          REMOTE_IMAGE_TAG="${REGISTRY}/${PROJECT_NAME}:${{ github.ref_name }}"
-          
-          # 1. Build the image using the updated script
-          # Use --image-name so the image gets built with the correct GHCR name
-          ./build_and_load.sh "$PROJECT_NAME" latest --ci --image-name "${REMOTE_IMAGE_LATEST}"
-          
-          # 2. Tag and Push the image to GHCR
+
+          echo "Processing project: $PROJECT_NAME (${ARCH})"
+
+          # Per-arch tag; the manifest job stitches them into :<tag> and :latest
+          REMOTE_IMAGE_ARCH="${REGISTRY}/${PROJECT_NAME}:${{ github.ref_name }}-${ARCH}"
+
+          # 1. Build the image natively on this runner's architecture
+          ./build_and_load.sh "$PROJECT_NAME" latest --ci --image-name "${REMOTE_IMAGE_ARCH}"
+
+          # 2. Push the per-arch image to GHCR
           # GitHub runners have both buildah and docker. build_and_load.sh uses buildah with vfs if available.
           if command -v buildah >/dev/null 2>&1; then
             echo "Pushing with buildah..."
-            sudo buildah --storage-driver vfs push --authfile "${HOME}/.docker/config.json" "${REMOTE_IMAGE_LATEST}" "docker://${REMOTE_IMAGE_LATEST}"
-            sudo buildah --storage-driver vfs push --authfile "${HOME}/.docker/config.json" "${REMOTE_IMAGE_LATEST}" "docker://${REMOTE_IMAGE_TAG}"
+            sudo buildah --storage-driver vfs push --authfile "${HOME}/.docker/config.json" "${REMOTE_IMAGE_ARCH}" "docker://${REMOTE_IMAGE_ARCH}"
           else
             echo "Pushing with docker..."
-            docker tag "${REMOTE_IMAGE_LATEST}" "${REMOTE_IMAGE_TAG}"
-            docker push "${REMOTE_IMAGE_LATEST}"
-            docker push "${REMOTE_IMAGE_TAG}"
+            docker push "${REMOTE_IMAGE_ARCH}"
           fi
+
+  manifest:
+    needs: [discover, build-and-push]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        project: ${{ fromJson(needs.discover.outputs.projects) }}
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and Push Multi-Arch Manifest
+        env:
+          PROJECT_NAME: ${{ matrix.project }}
+        run: |
+          REPO_LOWER=$(echo "${{ github.repository }}" | tr '[:upper:]' '[:lower:]')
+          IMAGE="ghcr.io/${REPO_LOWER}/${PROJECT_NAME}"
+          TAG="${{ github.ref_name }}"
+
+          docker buildx imagetools create \
+            --tag "${IMAGE}:${TAG}" \
+            --tag "${IMAGE}:latest" \
+            "${IMAGE}:${TAG}-amd64" \
+            "${IMAGE}:${TAG}-arm64"
+
+          # Verify both architectures are actually in the published manifest
+          out=$(docker buildx imagetools inspect "${IMAGE}:${TAG}")
+          echo "$out"
+          echo "$out" | grep -q 'linux/amd64'
+          echo "$out" | grep -q 'linux/arm64'
