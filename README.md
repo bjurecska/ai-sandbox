@@ -1,6 +1,6 @@
 # Sandboxed Docker Templates Repository
 
-This repository contains Docker sandbox templates and scripts for building and managing container environments with [`sbx`](https://docs.docker.com/).
+This repository contains Docker sandbox templates and scripts for building and managing container environments with [`sbx`](https://docs.docker.com/ai/sandboxes/get-started/).
 
 ## Repository Structure
 
