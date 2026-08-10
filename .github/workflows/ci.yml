@@ -69,8 +69,8 @@ jobs:
           # GitHub runners have both buildah and docker. build_and_load.sh uses buildah with vfs if available.
           if command -v buildah >/dev/null 2>&1; then
             echo "Pushing with buildah..."
-            sudo buildah --storage-driver vfs push "${REMOTE_IMAGE_LATEST}" "docker://${REMOTE_IMAGE_LATEST}"
-            sudo buildah --storage-driver vfs push "${REMOTE_IMAGE_LATEST}" "docker://${REMOTE_IMAGE_TAG}"
+            sudo buildah --storage-driver vfs push --authfile "${HOME}/.docker/config.json" "${REMOTE_IMAGE_LATEST}" "docker://${REMOTE_IMAGE_LATEST}"
+            sudo buildah --storage-driver vfs push --authfile "${HOME}/.docker/config.json" "${REMOTE_IMAGE_LATEST}" "docker://${REMOTE_IMAGE_TAG}"
           else
             echo "Pushing with docker..."
             docker tag "${REMOTE_IMAGE_LATEST}" "${REMOTE_IMAGE_TAG}"
