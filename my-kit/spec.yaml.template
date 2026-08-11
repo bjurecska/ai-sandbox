@@ -1,0 +1,64 @@
+# Template for the gitlab-creds kit spec.
+# Copy to spec.yaml (gitignored) and replace the <placeholders>:
+#   cp spec.yaml.template spec.yaml
+schemaVersion: "2"
+kind: sandbox
+name: gitlab-creds
+version: "0.1.0"
+description: >
+  Two separately-scoped GitLab credentials: a read-only deploy token
+  that syncs the Claude Code dotfiles repo on every sandbox start, and
+  an independent token that authenticates the glab CLI.
+# Parent to build on, e.g. ghcr.io/<owner>/<project>/<image>:<tag>.
+# Note: docs.docker.com specifies a sandbox *kit* here; an image ref
+# passes `sbx kit validate` but run-time resolution is unverified —
+# see the README's mixin fallback if it fails to resolve.
+extends: <parent-image-or-kit>
+
+credentials:
+  - service: gitlab-config-repo
+    description: >
+      Read-only GitLab deploy token (read_repository) scoped to the
+      dotfiles project. Used only to clone/pull the Claude Code
+      dotfiles repo. Injected as HTTP Basic auth on gitlab.com.
+    required: false
+    apiKey:
+      name: GITLAB_CONFIG_REPO_TOKEN
+      proxyManaged: true
+      inject:
+        - domain: gitlab.com
+          scheme: basic
+          # Must match the deploy token's username in GitLab.
+          username: claude-config-sync
+
+  - service: gitlab-cli
+    description: >
+      GitLab token (PAT or project/group access token) for glab CLI
+      work inside the sandbox. Independent of the config-repo deploy
+      token. Injected as the PRIVATE-TOKEN header on gitlab.com.
+    required: false
+    apiKey:
+      name: GITLAB_CLI_TOKEN
+      proxyManaged: true
+      inject:
+        - domain: gitlab.com
+          header: PRIVATE-TOKEN
+          format: "%s"
+
+environment:
+  variables:
+    CLAUDE_CONFIG_REPO_URL: https://gitlab.com/<group>/<dotfiles-repo>.git
+
+permissions:
+  network:
+    allow:
+      - gitlab.com
+
+setup:
+  startup:
+    - command: ["bash", "/home/agent/.local/bin/sync-claude-config.sh"]
+      user: "1000"
+      description: Sync ~/.claude from the dotfiles repo
+    - command: ["bash", "/home/agent/.local/bin/glab-login.sh"]
+      user: "1000"
+      description: Authenticate the glab CLI non-interactively
