@@ -46,12 +46,39 @@ permissions:
   network:
     allow:
       - gitlab.com
+      # Google Antigravity CLI (agy) — mirrors the Google & Antigravity
+      # section of claude-agy/sbx-policy.yaml so fresh sandboxes work
+      # without running apply_policy.sh.
+      - google.com
+      - "*.googleapis.com"
+      - "*.googleusercontent.com"
+      - antigravity.google
+      - antigravity-unleash.goog
+      - "*.antigravity-unleash.goog"
+      - "*-974169037036.*.run.app"
+      # GitHub — the plugin marketplace clone in setup-claude-plugins.sh, and
+      # the marketplaces the synced settings.json already declares. Mirrors the
+      # GitHub section of claude-agy/sbx-policy.yaml so fresh sandboxes work
+      # without running apply_policy.sh.
+      - github.com
+      - "*.github.com"
+      - "*.githubusercontent.com"
 
 setup:
   startup:
-    - command: ["bash", "/home/agent/.local/bin/sync-claude-config.sh"]
+    # Waits for the scripts to exist first: at creation, this entry has
+    # been observed to run before the kit's files/home content lands,
+    # failing before the script could even log.
+    #
+    # The two scripts are chained in one entry, not listed as two, because
+    # startup entries have no guaranteed order and the plugin install must
+    # follow the sync: the sync rsyncs the dotfiles repo over ~/.claude, and
+    # ~/.claude/settings.json holds enabledPlugins. Sequenced with ';' and
+    # '|| true' rather than '&&' — a failed sync must not suppress the
+    # plugin install.
+    - command: ["bash", "-c", "for i in $(seq 1 30); do [ -f /home/agent/.local/bin/sync-claude-config.sh ] && [ -f /home/agent/.local/bin/setup-claude-plugins.sh ] && break; sleep 1; done; if [ ! -f /home/agent/.local/bin/setup-claude-plugins.sh ]; then echo 'kit startup scripts never landed' >&2; exit 1; fi; bash /home/agent/.local/bin/sync-claude-config.sh || true; exec bash /home/agent/.local/bin/setup-claude-plugins.sh"]
       user: "1000"
-      description: Sync ~/.claude from the dotfiles repo
+      description: Sync ~/.claude from the dotfiles repo, then install plugins
     - command: ["bash", "/home/agent/.local/bin/glab-login.sh"]
       user: "1000"
       description: Authenticate the glab CLI non-interactively

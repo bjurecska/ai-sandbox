@@ -6,6 +6,22 @@
 # deploy token never enters the sandbox.
 set -euo pipefail
 
+# Startup output is captured nowhere by sbx — keep a log so boot-time
+# failures can be diagnosed after the fact.
+LOG_FILE="${HOME}/.cache/sync-claude-config.log"
+mkdir -p "$(dirname "${LOG_FILE}")"
+exec > >(tee -a "${LOG_FILE}") 2>&1
+echo "=== run $(date -u +%FT%TZ) ==="
+
+# sbx can fire this startup entry several times concurrently on one
+# start (observed: four instances in the same second, shredding each
+# other's clone). Serialize: losers exit cleanly, the winner syncs.
+exec 9>"${HOME}/.cache/sync-claude-config.flock"
+if ! flock -n 9; then
+  echo "sync-claude-config: another instance holds the lock; exiting"
+  exit 0
+fi
+
 # The dotfiles repo to sync from — no default; set it via the kit's
 # environment.variables (see README). A repo on a different host than the
 # inject domain in spec.yaml also needs that domain and the network
@@ -57,18 +73,18 @@ else
   # the later glab-login startup step already works) — retry before
   # giving up.
   cloned=false
-  for attempt in 1 2 3 4 5; do
+  for attempt in 1 2 3 4 5 6 7 8 9 10; do
     if git -c http.extraHeader="${AUTH_HEADER}" \
          clone --quiet --depth 1 "${REPO_URL}" "${CACHE_DIR}"; then
       cloned=true
       break
     fi
-    echo "sync-claude-config: clone attempt ${attempt} failed; retrying in 2s" >&2
+    echo "sync-claude-config: clone attempt ${attempt} failed; retrying in 3s" >&2
     rm -rf "${CACHE_DIR}"
-    sleep 2
+    sleep 3
   done
   if [ "${cloned}" != true ]; then
-    echo "sync-claude-config: clone failed after 5 attempts — check the" \
+    echo "sync-claude-config: clone failed after 10 attempts — check the" \
          "custom secret (sbx secret set-custom ..., see my-kit/README.md)" >&2
     exit 1
   fi

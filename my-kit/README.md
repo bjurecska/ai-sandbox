@@ -15,14 +15,20 @@ deploy token is a custom secret rather than a kit credential because
 kit `scheme: basic` injection cannot authenticate git (see
 [Design notes](#design-notes)).
 
+It also brings the sandbox's Claude Code up to a working state on every
+start: the dotfiles sync, `glab` login, and the `agy-delegate` plugin
+install (see [Plugins](#plugins)). MCP servers are attached from the
+host rather than installed here — see [MCP servers](#mcp-servers).
+
 ```text
 my-kit/
-├── spec.yaml.template          # commit-safe template with <placeholders>
-├── spec.yaml                   # your real config — gitignored, copied from the template
+├── spec.yaml.template            # commit-safe template with <placeholders>
+├── spec.yaml                     # your real config — gitignored, copied from the template
 ├── README.md
 └── files/home/.local/bin/
-    ├── sync-claude-config.sh   # config repo only
-    └── glab-login.sh           # glab auth only
+    ├── sync-claude-config.sh     # config repo only
+    ├── glab-login.sh             # glab auth only
+    └── setup-claude-plugins.sh   # plugin marketplace + agy-delegate only
 ```
 
 ## Configuration
@@ -124,21 +130,49 @@ then re-run `set-custom` **adding
 the placeholder keeps existing sandboxes' env valid, so they pick up
 the new value without being recreated.
 
-## 3. Run
+## 3. Register the MCP servers on the host
 
-The kit is a mixin: the sandbox image comes from `--template`, and the
-kit layers the credentials, environment, and startup scripts onto it:
+Do this **before** the first run: a sandbox's static MCP set is fixed
+when it is created.
 
 ```bash
-sbx run --template ghcr.io/bjurecska/ai-sandbox/claude-agy:1.2 \
-  --kit ./my-kit/ --name sandboxed-claude-agy claude
+sbx mcp add GitLab --url https://gitlab.com/api/v4/mcp
+sbx mcp add qmd    --command "$HOME/.local/bin/qmd" --args mcp
+sbx mcp auth GitLab            # OAuth servers only; interactive
+sbx mcp ls                     # confirm
+```
+
+`sbx-up.sh` refuses to create the sandbox if a requested server is
+unregistered, and warns if an OAuth one is unauthorized.
+
+## 4. Run
+
+The kit is a mixin: the sandbox image comes from `--template`, and the
+kit layers the credentials, environment, and startup scripts onto it.
+`sbx-up.sh` in the repo root composes creation, MCP attachment, network
+policy and attach into one command:
+
+```bash
+./sbx-up.sh --name sandboxed-claude-agy
+```
+
+which is equivalent to:
+
+```bash
+sbx create --template ghcr.io/bjurecska/ai-sandbox/claude-agy:1.2 \
+  --kit ./my-kit/ --static-mcp GitLab,qmd --name sandboxed-claude-agy claude .
+./apply_policy.sh claude-agy --sandbox sandboxed-claude-agy
+sbx run --name sandboxed-claude-agy
 ```
 
 (A locally loaded template like `claude-code-agy:latest` works in
 `--template` too.)
 
-`--kit` only takes effect at sandbox creation; for an existing sandbox
-use `sbx kit add` or recreate it.
+`--kit` and `--static-mcp` only take effect at sandbox creation; for an
+existing sandbox use `sbx kit add` / `sbx mcp load <name> --sandbox
+<sandbox>`, or recreate it. Re-running `sbx-up.sh` against a sandbox
+that already exists skips creation, so it will **not** pick up a changed
+`--mcp`.
 
 > **Why not `extends`?** `extends: <image-ref>` passes
 > `sbx kit validate` but fails at sandbox creation with
@@ -146,7 +180,7 @@ use `sbx kit add` or recreate it.
 > kit names only, and `claude-agy` is published as a plain container
 > image, not a kit artifact.
 
-## 4. Verify
+## 5. Verify
 
 Exec into the running sandbox:
 
@@ -185,6 +219,101 @@ Then check each concern independently:
    These should print `proxy-managed` and an `sbx-cs-…` placeholder —
    seeing a real token here means proxy substitution is not active.
 
+5. **MCP servers reachable**:
+
+   ```bash
+   claude mcp list                          # expect mcp-gateway ✓ connected
+   ```
+
+   The host's servers arrive *through* that gateway, so they do not
+   appear as separate entries. Confirm the tools themselves in a session:
+   gateway-provided tools carry the `mcp__mcp-gateway__` prefix, because
+   the gateway flattens tool names without embedding the originating
+   server.
+
+6. **Plugin installed and its launcher pinned**:
+
+   ```bash
+   claude plugin list --json | jq '.[] | select(.id=="agy-delegate@ai-plugins")'
+   agy-bridge --types
+   cat ~/.cache/setup-claude-plugins.log
+   ```
+
+   Expect `"enabled": true` and an `installPath` under
+   `~/.claude/plugins/cache/`. If the plugin is installed but *not*
+   enabled, the config sync overwrote `settings.json` after the install —
+   check the ordering in the log.
+
+## MCP servers
+
+MCP servers are registered **on the host** and attached to the sandbox
+through the gateway that sbx's built-in `claude` kit already wires up.
+They are not registered inside the sandbox, and this is not a
+preference:
+
+- `sbx mcp add --command` runs the server binary **on the host**, outside
+  the sandbox.
+- The sandbox image has no `qmd`, no `op` and no `1password-mcp`, so a
+  sandbox-local `claude mcp add` would register servers that can never
+  start.
+- `qmd`'s collections index host paths the sandbox cannot see, so even a
+  qmd installed into the image would search nothing.
+
+The attachment is a host-side flag (`--static-mcp`), fixed at creation
+and **not expressible in a kit spec** — which is why `sbx-up.sh` exists.
+
+> **1Password does not work, and renaming it does not help.** Loading it
+> fails with:
+>
+> ```text
+> ERROR: add "1password" to sandbox "<name>": add MCP gateway server:
+> request failed: 500 Internal Server Error:
+> parse "1password://docs/getting-started": first path segment in URL cannot contain colon
+> ```
+>
+> The server publishes its own docs resources under the scheme
+> `1password://`. RFC 3986 requires a URI scheme to start with a letter,
+> so Go's `net/url` rejects it and the gateway 500s while enumerating
+> resources. The leading digit is the cause, but it is in the server's
+> resource URIs, not in the sbx registration name — registering an alias
+> `onepassword` pointing at the same binary reproduces the identical
+> error (tested on sbx v0.38.0). Nothing in this repo can fix it; it
+> needs a scheme change from 1Password or a tolerant parse from sbx.
+> `qmd` and `GitLab` load cleanly, so this is specific to that server.
+
+## Plugins
+
+`setup-claude-plugins.sh` registers the
+[`ai-plugins`](https://github.com/bjurecska/ai-plugins) marketplace,
+installs `agy-delegate`, and runs the plugin's own `scripts/install.sh`
+to pin the `~/.local/bin/agy-bridge` launcher. It runs on every start and
+is idempotent — re-running repins the launcher, which is required
+because the pin is an absolute path containing the plugin version, and
+`~/.claude/plugins` is not on a persisted volume.
+
+Ordering against the config sync is the whole difficulty, and is handled
+in two places:
+
+- The two scripts are **chained in a single startup entry** rather than
+  listed as two, because startup entries have no guaranteed order and
+  the sync rsyncs over `~/.claude/settings.json` — the file holding
+  `enabledPlugins` and `extraKnownMarketplaces`.
+- `setup-claude-plugins.sh` additionally **takes the sync's flock as a
+  blocking barrier** before doing any work. sbx can fire one startup
+  entry several times concurrently; the losing instances' syncs exit
+  immediately on their non-blocking lock, so without the barrier their
+  plugin installs would race ahead of the winner's still-running rsync.
+
+This is also why the script calls `claude plugin enable` explicitly:
+after a sync has dropped `enabledPlugins`, `claude plugin install` sees
+the plugin already present in `installed_plugins.json` and will not
+re-enable it on its own.
+
+The marketplace is added by **git URL**, not by the
+`bjurecska/ai-plugins` shorthand (which resolves via `api.github.com`)
+and not as a directory (which would only resolve in a sandbox whose
+workspace happens to be the plugin repo).
+
 ## Design notes
 
 - **The proxy substitutes placeholders, it doesn't add credentials.**
@@ -207,5 +336,11 @@ Then check each concern independently:
   syncing rides the read-only deploy token; general GitLab work goes
   through `glab`.
 - **Startup scripts are invoked via `bash <path>`** rather than relying
-  on the executable bit surviving the kit file copy, and both are safe
-  to rerun on every start.
+  on the executable bit surviving the kit file copy, and all three are
+  safe to rerun on every start.
+- **The GitHub allowlist entries are load-bearing beyond the plugin.**
+  The synced `settings.json` already declares marketplaces hosted on
+  GitHub, so without `github.com` in `permissions.network.allow` they
+  cannot resolve on a fresh sandbox either. Those entries mirror the
+  GitHub section of `claude-agy/sbx-policy.yaml` so a sandbox works
+  before `apply_policy.sh` has run.

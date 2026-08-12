@@ -10,13 +10,18 @@ This repository contains Docker sandbox templates and scripts for building and m
 ├── .gitignore                   # Git ignore rules
 ├── build_and_load.sh            # Root build & load script for projects
 ├── apply_policy.sh              # Root SBX network policy synchronization script
+├── sbx-up.sh                    # Root bring-up script: create + MCP + policy + attach
 ├── sbx-policy-global.yaml       # Global baseline network policy manifest
 ├── README.md                    # Repository documentation
-└── claude-agy/                  # Claude Code + Google Antigravity CLI Sandbox Template
-    ├── Dockerfile
-    ├── README.md                # Project-specific documentation
-    ├── sbx-policy.yaml          # Project-specific SBX network policy manifest
-    └── config/                  # Gemini system rules and skills
+├── claude-agy/                  # Claude Code + Google Antigravity CLI Sandbox Template
+│   ├── Dockerfile
+│   ├── README.md                # Project-specific documentation
+│   ├── sbx-policy.yaml          # Project-specific SBX network policy manifest
+│   └── config/                  # Gemini system rules and skills
+└── my-kit/                      # SBX kit (mixin): GitLab credentials, config sync, plugins
+    ├── README.md                # Kit documentation
+    ├── spec.yaml.template       # Commit-safe kit spec template
+    └── files/                   # Startup scripts delivered into the sandbox
 ```
 
 ---
@@ -27,6 +32,13 @@ This repository contains Docker sandbox templates and scripts for building and m
 Extends `docker/sandbox-templates:claude-code` with Google Antigravity CLI (`agy`), CodeGraph CLI, and GitLab CLI (`glab`) pre-installed for agentic workflows inside Docker sandboxes.
 
 👉 Read the full project documentation in [`claude-agy/README.md`](claude-agy/README.md).
+
+## Sandbox Kits
+
+### [`my-kit/`](my-kit/)
+An `sbx` kit (mixin) layering two separately-scoped GitLab credentials onto the sandbox, syncing `~/.claude` from a dotfiles repo on every start, and installing the `agy-delegate` plugin. MCP servers are attached from the host through the sbx gateway.
+
+👉 Read the full kit documentation in [`my-kit/README.md`](my-kit/README.md).
 
 ---
 
@@ -50,6 +62,16 @@ Follow these steps to build the template, synchronize network egress policies fo
    ./apply_policy.sh claude-agy --sandbox sandboxed-claude-agy
    ```
    *Applies project-specific network allowlist rules from `claude-agy/sbx-policy.yaml` (and global baseline policies) to `sandboxed-claude-agy`.*
+
+### With the `my-kit` mixin (`sbx-up.sh`)
+
+To run the kit as well, `sbx-up.sh` replaces steps 2 and 3 with one command — it creates the sandbox with `--kit` and `--static-mcp`, applies the policy, then attaches:
+
+```bash
+./sbx-up.sh --name sandboxed-claude-agy
+```
+
+*Requires the kit's secrets and MCP servers to be registered on the host first; see [`my-kit/README.md`](my-kit/README.md). Run `./sbx-up.sh --help` for the options, or `--dry-run` to preview.*
 
 ---
 
