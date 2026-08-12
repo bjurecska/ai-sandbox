@@ -159,7 +159,7 @@ policy and attach into one command:
 which is equivalent to:
 
 ```bash
-sbx create --template ghcr.io/bjurecska/ai-sandbox/claude-agy:1.2 \
+sbx create --template ghcr.io/bjurecska/ai-sandbox/claude-agy:1.3 \
   --kit ./my-kit/ --static-mcp GitLab,qmd --name sandboxed-claude-agy claude .
 ./apply_policy.sh claude-agy --sandbox sandboxed-claude-agy
 sbx run --name sandboxed-claude-agy

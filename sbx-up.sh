@@ -26,7 +26,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Keep in sync with the run command documented in my-kit/README.md.
-DEFAULT_TEMPLATE="ghcr.io/bjurecska/ai-sandbox/claude-agy:1.2"
+DEFAULT_TEMPLATE="ghcr.io/bjurecska/ai-sandbox/claude-agy:1.3"
 DEFAULT_NAME="sandboxed-claude-agy"
 # 1password is deliberately absent: its MCP server publishes resources under the
 # scheme '1password://', which RFC 3986 forbids (a scheme must start with a
