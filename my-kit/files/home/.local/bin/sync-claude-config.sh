@@ -2,9 +2,8 @@
 # Sync ~/.claude from the claude-home dotfiles repo.
 #
 # Runs as a setup.startup command on every sandbox start, so it must stay
-# idempotent. No credential is handled in this script: the sandbox proxy
-# injects the gitlab-config-repo deploy token as HTTP Basic auth on
-# requests to gitlab.com (see spec.yaml).
+# idempotent. Auth: see the GITLAB_CONFIG_REPO_B64 block below — the real
+# deploy token never enters the sandbox.
 set -euo pipefail
 
 # The dotfiles repo to sync from — no default; set it via the kit's
@@ -17,6 +16,20 @@ if [ -z "${CLAUDE_CONFIG_REPO_URL:-}" ]; then
   exit 1
 fi
 REPO_URL="${CLAUDE_CONFIG_REPO_URL}"
+
+# GITLAB_CONFIG_REPO_B64 holds a unique placeholder set by the host's
+# custom secret (sbx secret set-custom --host gitlab.com --env ...; the
+# stored value is base64 of "<deploy-token-user>:<token>"). git sends
+# the placeholder verbatim in the Authorization header and the proxy
+# substitutes the real value in flight — the token never enters the
+# sandbox. The proxy only rewrites values it can see in a header, which
+# is why git must send this itself rather than rely on injection.
+if [ -z "${GITLAB_CONFIG_REPO_B64:-}" ]; then
+  echo "sync-claude-config: GITLAB_CONFIG_REPO_B64 is not set — create the" \
+       "custom secret on the host (see my-kit/README.md)" >&2
+  exit 1
+fi
+AUTH_HEADER="Authorization: Basic ${GITLAB_CONFIG_REPO_B64}"
 CACHE_DIR="${HOME}/.cache/claude-config-src"
 TARGET_DIR="${HOME}/.claude"
 
@@ -32,15 +45,17 @@ RSYNC_EXCLUDES=(
 export GIT_TERMINAL_PROMPT=0
 
 if [ -d "${CACHE_DIR}/.git" ]; then
-  if ! git -C "${CACHE_DIR}" pull --ff-only --quiet; then
+  if ! git -C "${CACHE_DIR}" -c http.extraHeader="${AUTH_HEADER}" \
+       pull --ff-only --quiet; then
     echo "sync-claude-config: pull failed; syncing from the cached copy" >&2
   fi
 else
   rm -rf "${CACHE_DIR}"
   mkdir -p "$(dirname "${CACHE_DIR}")"
-  if ! git clone --quiet --depth 1 "${REPO_URL}" "${CACHE_DIR}"; then
-    echo "sync-claude-config: clone failed — is the gitlab-config-repo" \
-         "secret set on the host? (sbx secret set gitlab-config-repo)" >&2
+  if ! git -c http.extraHeader="${AUTH_HEADER}" \
+       clone --quiet --depth 1 "${REPO_URL}" "${CACHE_DIR}"; then
+    echo "sync-claude-config: clone failed — is the custom secret set on" \
+         "the host? (sbx secret set-custom ..., see my-kit/README.md)" >&2
     exit 1
   fi
 fi

@@ -3,16 +3,17 @@
 A Docker Sandboxes kit that layers **two deliberately separate GitLab
 credentials** onto the `claude-agy` sandbox:
 
-| Service (`sbx secret set` name) | Env var in sandbox | Injected as | Used only for |
+| Credential | Provided via | Env var in sandbox | Used only for |
 | :--- | :--- | :--- | :--- |
-| `gitlab-config-repo` | `GITLAB_CONFIG_REPO_TOKEN` | `Authorization: Basic` (username from `spec.yaml`) on `gitlab.com` | Cloning/pulling the `claude-home` dotfiles repo on every start (`sync-claude-config.sh`) |
-| `gitlab-cli` | `GITLAB_CLI_TOKEN` | `PRIVATE-TOKEN` header on `gitlab.com` | Authenticating the `glab` CLI (`glab-login.sh`) |
+| Read-only deploy token | **Custom secret** (`sbx secret set-custom`), stored as base64 `<user>:<token>` | `GITLAB_CONFIG_REPO_B64` (a unique placeholder) | Cloning/pulling the dotfiles repo on every start (`sync-claude-config.sh`) |
+| glab CLI token | **Kit credential** `gitlab-cli` (`sbx secret set gitlab-cli`) | `GITLAB_CLI_TOKEN` (the `proxy-managed` sentinel) | Authenticating the `glab` CLI (`glab-login.sh`) |
 
-Different token, different scope, different blast radius. Both are
-`proxyManaged: true`: the sandbox only ever sees placeholder sentinels;
-the host-side proxy rewrites the real values into request headers on the
-way out. The two credentials inject **different header names**, so they
-coexist on the same domain without overwriting each other.
+Different token, different scope, different blast radius — and in both
+cases the sandbox only ever sees a placeholder; the host-side proxy
+substitutes the real value into request headers on the way out. The
+deploy token is a custom secret rather than a kit credential because
+kit `scheme: basic` injection cannot authenticate git (see
+[Design notes](#design-notes)).
 
 ```text
 my-kit/
@@ -27,8 +28,8 @@ my-kit/
 ## Configuration
 
 `spec.yaml` is gitignored because it carries machine-/user-specific
-values. Create yours from the template and fill in the placeholders —
-the `extends` parent and the `environment.variables` below:
+values. Create yours from the template and fill in the placeholders in
+`environment.variables`:
 
 ```bash
 cp spec.yaml.template spec.yaml
@@ -71,10 +72,11 @@ in `spec.yaml` — credential injection is domain-scoped.
 In the `claude-home` project: **Settings → Repository → Deploy tokens**.
 
 - **Name**: anything descriptive (e.g. `sandbox config sync`).
-- **Username**: set it explicitly to `claude-config-sync` so it matches
-  `inject[].username` in `spec.yaml`. If you let GitLab generate one
-  (`gitlab+deploy-token-NNNN`), edit `spec.yaml` to match instead — the
-  Basic auth pair is `<username>:<token>` and both halves must be right.
+- **Username**: note the exact username of the created token (custom if
+  you filled the optional field, else generated
+  `gitlab+deploy-token-NNNN`) — it goes inside the stored secret pair
+  below, and a mismatched (or mistyped) username 401s even with a valid
+  token. The **Name** field is not the username.
 - **Scopes**: `read_repository` only.
 - **Expiration**: set one; rotating a read-only deploy token is cheap.
 
@@ -99,54 +101,50 @@ in [Design notes](#design-notes) below.
 
 ## 2. Store the secrets on the host
 
-One `sbx` secret per service, names matching `spec.yaml`:
+**glab CLI token** — a kit credential, name matching `spec.yaml`:
 
 ```bash
-# Prompts for the value (keeps it out of shell history):
-sbx secret set gitlab-config-repo
+# Prompts for the value, or pipe from 1Password:
 sbx secret set gitlab-cli
-
-# Or pipe from 1Password:
-op read 'op://<vault>/<item>/<field>' | sbx secret set gitlab-config-repo
 op read 'op://<vault>/<item>/<field>' | sbx secret set gitlab-cli
 ```
 
-Confirm with `sbx secret ls`. If your `sbx` version only accepts its
-built-in service names via `secret set`, provide the values at the
-first-run credential prompt when the sandbox is created instead — kit
-credentials can be sourced either way.
+**Deploy token** — a custom secret whose stored value is the base64 of
+the full `<username>:<token>` Basic pair:
 
-For `gitlab-config-repo`, the stored secret is the deploy token **value**
-only; the username half of the Basic pair comes from `spec.yaml`.
+```bash
+sbx secret set-custom --host gitlab.com --env GITLAB_CONFIG_REPO_B64 \
+  --value "$(printf '%s' "<deploy-token-username>:$(op read 'op://<vault>/<item>/<field>')" | base64 | tr -d '\n')"
+```
+
+Confirm both with `sbx secret ls`. To update the custom secret later
+(rotation, username fix): `sbx secret rm GITLAB_CONFIG_REPO_B64 -f`,
+then re-run `set-custom` **adding
+`--placeholder <the-placeholder-shown-by-sbx-secret-ls>`** — reusing
+the placeholder keeps existing sandboxes' env valid, so they pick up
+the new value without being recreated.
 
 ## 3. Run
 
+The kit is a mixin: the sandbox image comes from `--template`, and the
+kit layers the credentials, environment, and startup scripts onto it:
+
 ```bash
-sbx run --kit ./my-kit/ claude
+sbx run --template ghcr.io/bjurecska/ai-sandbox/claude-agy:1.2 \
+  --kit ./my-kit/ --name sandboxed-claude-agy claude
 ```
+
+(A locally loaded template like `claude-code-agy:latest` works in
+`--template` too.)
 
 `--kit` only takes effect at sandbox creation; for an existing sandbox
 use `sbx kit add` or recreate it.
 
-> **Note on `extends`:** `spec.yaml` uses
-> `extends: ghcr.io/bjurecska/ai-sandbox/claude-agy:1.2`. This passes
-> `sbx kit validate`, but docs.docker.com specifies that `extends` must
-> resolve to a sandbox *kit*, and CI publishes `claude-agy` as a plain
-> container image. If the first real run fails to resolve the parent,
-> switch to the mixin form, which layers onto the existing
-> `--template` workflow:
->
-> ```yaml
-> kind: mixin
-> requires:
->   agent: claude
-> # (drop the `extends:` line; everything else unchanged)
-> ```
->
-> ```bash
-> sbx run --template claude-code-agy:latest --kit ./my-kit/ \
->   --name sandboxed-claude-agy claude
-> ```
+> **Why not `extends`?** `extends: <image-ref>` passes
+> `sbx kit validate` but fails at sandbox creation with
+> `agentkits: invalid agent name` — `extends` accepts built-in agent
+> kit names only, and `claude-agy` is published as a plain container
+> image, not a kit artifact.
 
 ## 4. Verify
 
@@ -181,27 +179,33 @@ Then check each concern independently:
 4. **Sentinels, not secrets, in the sandbox**:
 
    ```bash
-   echo "$GITLAB_CONFIG_REPO_TOKEN" "$GITLAB_CLI_TOKEN"
+   echo "$GITLAB_CLI_TOKEN" "$GITLAB_CONFIG_REPO_B64"
    ```
 
-   Both should print placeholder values — seeing a real token here means
-   proxy management is not active.
+   These should print `proxy-managed` and an `sbx-cs-…` placeholder —
+   seeing a real token here means proxy substitution is not active.
 
 ## Design notes
 
-- **Same domain, two credentials.** The docs don't spell out behavior
-  for two credentials injecting into one domain, but each `inject` rule
-  names its own header — `Authorization` (Basic) vs `PRIVATE-TOKEN` — so
-  neither overwrites the other. GitLab's API evaluates `PRIVATE-TOKEN`
-  ahead of Basic auth, so glab API calls authenticate as credential 2
-  even though git-style Basic auth rides along on the same requests.
-  Verification step 1 is what proves this end to end.
-- **All sandbox git traffic to gitlab.com authenticates as the deploy
-  token.** Header injection is domain-wide with no path scoping, so a
-  `git clone`/`git push` against any *other* gitlab.com repo also gets
-  the deploy token's Basic header — and fails, because a deploy token is
-  project-scoped and read-only. That is the intended containment for
-  credential 1; do general GitLab work through `glab` (credential 2).
+- **The proxy substitutes placeholders, it doesn't add credentials.**
+  Substitution happens only on placeholder values the client actually
+  sends in a header — a credential-less request passes through untouched
+  and gets a 401 (verified empirically). That's why glab stores and
+  sends its sentinel token, and why `sync-claude-config.sh` sends
+  `Authorization: Basic <placeholder>` itself via `http.extraHeader`.
+- **Why the deploy token can't be a kit credential.** Kit
+  `scheme: basic` injection never authenticates git: git base64-encodes
+  Basic credentials, hiding the sentinel from the proxy's string
+  substitution, and `proxyManaged: false` sets no env var at all
+  (both verified empirically). The working pattern is a custom secret
+  whose stored value is the *pre-encoded* `base64(<user>:<token>)`
+  pair — git sends the unique placeholder visibly, the proxy swaps in
+  the encoded pair, and the token still never enters the sandbox.
+- **No ambient git credentials.** Only requests carrying a placeholder
+  get authenticated; any other `git` operation against gitlab.com from
+  inside the sandbox is anonymous and fails on private repos. Config
+  syncing rides the read-only deploy token; general GitLab work goes
+  through `glab`.
 - **Startup scripts are invoked via `bash <path>`** rather than relying
   on the executable bit surviving the kit file copy, and both are safe
   to rerun on every start.

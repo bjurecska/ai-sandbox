@@ -2,35 +2,28 @@
 # Copy to spec.yaml (gitignored) and replace the <placeholders>:
 #   cp spec.yaml.template spec.yaml
 schemaVersion: "2"
-kind: sandbox
+kind: mixin
 name: gitlab-creds
 version: "0.1.0"
 description: >
   Two separately-scoped GitLab credentials: a read-only deploy token
   that syncs the Claude Code dotfiles repo on every sandbox start, and
   an independent token that authenticates the glab CLI.
-# Parent to build on, e.g. ghcr.io/<owner>/<project>/<image>:<tag>.
-# Note: docs.docker.com specifies a sandbox *kit* here; an image ref
-# passes `sbx kit validate` but run-time resolution is unverified —
-# see the README's mixin fallback if it fails to resolve.
-extends: <parent-image-or-kit>
+# The sandbox image is supplied at run time via --template; a mixin only
+# layers credentials/env/network/startup onto the claude agent.
+# (extends: <image-ref> fails at run time: "agentkits: invalid agent
+# name" — extends accepts built-in agent kit names only.)
+requires:
+  agent: claude
 
+# The config-repo deploy token is NOT a kit credential: kit apiKey
+# injection cannot authenticate git (the proxy substitutes sentinels it
+# can see in a header value, and git base64-encodes Basic auth, hiding
+# them; proxyManaged: false sets no env var at all). It is provided as
+# a host-side custom secret instead — a placeholder env var whose value
+# the proxy substitutes in the Authorization header; see the README:
+#   sbx secret set-custom --host gitlab.com --env GITLAB_CONFIG_REPO_B64 ...
 credentials:
-  - service: gitlab-config-repo
-    description: >
-      Read-only GitLab deploy token (read_repository) scoped to the
-      dotfiles project. Used only to clone/pull the Claude Code
-      dotfiles repo. Injected as HTTP Basic auth on gitlab.com.
-    required: false
-    apiKey:
-      name: GITLAB_CONFIG_REPO_TOKEN
-      proxyManaged: true
-      inject:
-        - domain: gitlab.com
-          scheme: basic
-          # Must match the deploy token's username in GitLab.
-          username: claude-config-sync
-
   - service: gitlab-cli
     description: >
       GitLab token (PAT or project/group access token) for glab CLI
