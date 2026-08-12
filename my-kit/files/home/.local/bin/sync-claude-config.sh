@@ -52,10 +52,24 @@ if [ -d "${CACHE_DIR}/.git" ]; then
 else
   rm -rf "${CACHE_DIR}"
   mkdir -p "$(dirname "${CACHE_DIR}")"
-  if ! git -c http.extraHeader="${AUTH_HEADER}" \
-       clone --quiet --depth 1 "${REPO_URL}" "${CACHE_DIR}"; then
-    echo "sync-claude-config: clone failed — is the custom secret set on" \
-         "the host? (sbx secret set-custom ..., see my-kit/README.md)" >&2
+  # The proxy/network path may not be up in the first seconds of sandbox
+  # startup (observed: clone fails at boot, succeeds moments later while
+  # the later glab-login startup step already works) — retry before
+  # giving up.
+  cloned=false
+  for attempt in 1 2 3 4 5; do
+    if git -c http.extraHeader="${AUTH_HEADER}" \
+         clone --quiet --depth 1 "${REPO_URL}" "${CACHE_DIR}"; then
+      cloned=true
+      break
+    fi
+    echo "sync-claude-config: clone attempt ${attempt} failed; retrying in 2s" >&2
+    rm -rf "${CACHE_DIR}"
+    sleep 2
+  done
+  if [ "${cloned}" != true ]; then
+    echo "sync-claude-config: clone failed after 5 attempts — check the" \
+         "custom secret (sbx secret set-custom ..., see my-kit/README.md)" >&2
     exit 1
   fi
 fi
