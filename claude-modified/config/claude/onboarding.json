@@ -1,0 +1,13 @@
+{
+  "hasCompletedOnboarding": true,
+  "hasAcceptedTerms": true,
+  "hasTrustDialogAccepted": true,
+  "acceptedTerms": true,
+  "acceptedTermsOfService": true,
+  "termsAccepted": true,
+  "noticeVersionConfirmed": 3,
+  "terminalChoice": "xterm-256color",
+  "terminal": "xterm-256color",
+  "renderingMode": "alt-screen",
+  "theme": "dark"
+}

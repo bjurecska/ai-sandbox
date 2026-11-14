@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -e
+
+codegraph install --target=claude --yes && codegraph init && codegraph index
