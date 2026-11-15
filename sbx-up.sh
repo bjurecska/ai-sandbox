@@ -26,14 +26,14 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 # Keep in sync with the run command documented in my-kit/README.md.
-DEFAULT_TEMPLATE="ghcr.io/bjurecska/ai-sandbox/claude-agy:1.3"
-DEFAULT_NAME="sandboxed-claude-agy"
+DEFAULT_TEMPLATE="ghcr.io/bjurecska/ai-sandbox/claude-modified:2.0-beta1"
+DEFAULT_NAME="sandboxed-claude-modified"
 # 1password is deliberately absent: its MCP server publishes resources under the
 # scheme '1password://', which RFC 3986 forbids (a scheme must start with a
 # letter), and the sbx gateway returns 500 when it parses them. Renaming the
 # registration does not help — the URI comes from the server, not from sbx.
-DEFAULT_MCP="GitLab,qmd"
-DEFAULT_POLICY_PROJECT="claude-agy"
+DEFAULT_MCP="GitLab"
+DEFAULT_POLICY_PROJECT="claude-modified"
 
 TEMPLATE="${DEFAULT_TEMPLATE}"
 NAME="${DEFAULT_NAME}"
@@ -165,7 +165,7 @@ if ! command -v sbx >/dev/null 2>&1; then
     exit 1
 fi
 
-KIT_DIR="${SCRIPT_DIR}/my-kit"
+KIT_DIR="${SCRIPT_DIR}/claude-modified-kit"
 if [[ ! -f "${KIT_DIR}/spec.yaml" ]]; then
     echo "Error: ${KIT_DIR}/spec.yaml not found." >&2
     echo "       It is gitignored; create it from the template:" >&2
@@ -252,7 +252,7 @@ if [[ "${SANDBOX_EXISTS}" == true ]]; then
         echo "    To attach a server to it now:  sbx mcp load <name> --sandbox ${NAME}"
     fi
 else
-    CREATE_CMD=(sbx create --template "${TEMPLATE}" --kit "${KIT_DIR}/" --name "${NAME}")
+    CREATE_CMD=(sbx create --template "${TEMPLATE}" --kit "${KIT_DIR}/" --name "${NAME}" --skills=off)
     if [[ ${#MCP_SERVERS[@]} -gt 0 ]]; then
         CREATE_CMD+=(--static-mcp "${MCP}")
     fi

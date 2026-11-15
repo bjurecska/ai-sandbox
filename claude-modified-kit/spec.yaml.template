@@ -1,84 +1,52 @@
-# Template for the gitlab-creds kit spec.
-# Copy to spec.yaml (gitignored) and replace the <placeholders>:
-#   cp spec.yaml.template spec.yaml
-schemaVersion: "2"
+# syntax=docker/sandbox-kit:3
+schemaVersion: "3"
 kind: mixin
-name: gitlab-creds
+displayName: gitlab-creds
 version: "0.1.0"
 description: >
-  Two separately-scoped GitLab credentials: a read-only deploy token
-  that syncs the Claude Code dotfiles repo on every sandbox start, and
-  an independent token that authenticates the glab CLI.
-# The sandbox image is supplied at run time via --template; a mixin only
-# layers credentials/env/network/startup onto the claude agent.
-# (extends: <image-ref> fails at run time: "agentkits: invalid agent
-# name" — extends accepts built-in agent kit names only.)
-requires:
-  agent: claude
+  Read-only deploy token for the Claude config repo, and a separate glab token.
+requires: ["claude"]
 
-# The config-repo deploy token is NOT a kit credential: kit apiKey
-# injection cannot authenticate git (the proxy substitutes sentinels it
-# can see in a header value, and git base64-encodes Basic auth, hiding
-# them; proxyManaged: false sets no env var at all). It is provided as
-# a host-side custom secret instead — a placeholder env var whose value
-# the proxy substitutes in the Authorization header; see the README:
-#   sbx secret set-custom --host gitlab.com --env GITLAB_CONFIG_REPO_B64 ...
-credentials:
-  - service: gitlab-cli
-    description: >
-      GitLab token (PAT or project/group access token) for glab CLI
-      work inside the sandbox. Independent of the config-repo deploy
-      token. Injected as the PRIVATE-TOKEN header on gitlab.com.
-    required: false
-    apiKey:
-      name: GITLAB_CLI_TOKEN
-      proxyManaged: true
-      inject:
-        - domain: gitlab.com
-          header: PRIVATE-TOKEN
-          format: "%s"
+build: |
+  FROM scratch
+  COPY --chown=1000:1000 files/home/.local/bin/ /home/agent/.local/bin/
 
-environment:
-  variables:
-    CLAUDE_CONFIG_REPO_URL: https://gitlab.com/<group>/<dotfiles-repo>.git
+args:
+  configRepoUrl:
+    default: https://gitlab.com/<group>/<dotfiles-repo>.git
+    env: CLAUDE_CONFIG_REPO_URL
 
-permissions:
-  network:
-    allow:
-      - gitlab.com
-      # Google Antigravity CLI (agy) — mirrors the Google & Antigravity
-      # section of claude-agy/sbx-policy.yaml so fresh sandboxes work
-      # without running apply_policy.sh.
-      - google.com
-      - "*.googleapis.com"
-      - "*.googleusercontent.com"
-      - antigravity.google
-      - antigravity-unleash.goog
-      - "*.antigravity-unleash.goog"
-      - "*-974169037036.*.run.app"
-      # GitHub — the plugin marketplace clone in setup-claude-plugins.sh, and
-      # the marketplaces the synced settings.json already declares. Mirrors the
-      # GitHub section of claude-agy/sbx-policy.yaml so fresh sandboxes work
-      # without running apply_policy.sh.
-      - github.com
-      - "*.github.com"
-      - "*.githubusercontent.com"
+capabilities:
+  - type: com.docker.sandbox/network-policy@1
+    config:
+      runtime:
+        allow:
+          - gitlab.com
+          - google.com
+          - github.com
+          - "*.github.com"
+          - "*.githubusercontent.com"
 
-setup:
-  startup:
-    # Waits for the scripts to exist first: at creation, this entry has
-    # been observed to run before the kit's files/home content lands,
-    # failing before the script could even log.
-    #
-    # The two scripts are chained in one entry, not listed as two, because
-    # startup entries have no guaranteed order and the plugin install must
-    # follow the sync: the sync rsyncs the dotfiles repo over ~/.claude, and
-    # ~/.claude/settings.json holds enabledPlugins. Sequenced with ';' and
-    # '|| true' rather than '&&' — a failed sync must not suppress the
-    # plugin install.
-    - command: ["bash", "-c", "for i in $(seq 1 30); do [ -f /home/agent/.local/bin/sync-claude-config.sh ] && [ -f /home/agent/.local/bin/setup-claude-plugins.sh ] && break; sleep 1; done; if [ ! -f /home/agent/.local/bin/setup-claude-plugins.sh ]; then echo 'kit startup scripts never landed' >&2; exit 1; fi; bash /home/agent/.local/bin/sync-claude-config.sh || true; exec bash /home/agent/.local/bin/setup-claude-plugins.sh"]
-      user: "1000"
-      description: Sync ~/.claude from the dotfiles repo, then install plugins
-    - command: ["bash", "/home/agent/.local/bin/glab-login.sh"]
-      user: "1000"
-      description: Authenticate the glab CLI non-interactively
+  - type: com.docker.sandbox/credential@1
+    optional: true
+    description: GitLab token for glab inside the sandbox (PRIVATE-TOKEN on gitlab.com)
+    config:
+      service: gitlab-cli
+      phase: runtime
+      apiKey:
+        name: GITLAB_CLI_TOKEN
+        proxyManaged: true
+        inject:
+          - {domain: gitlab.com, header: PRIVATE-TOKEN, format: "%s"}
+
+  - type: com.docker.sandbox/lifecycle@1
+    config:
+      startup:
+        - command: ["bash", "-c", "bash /home/agent/.local/bin/sync-claude-config.sh || true; exec bash /home/agent/.local/bin/setup-claude-plugins.sh"]
+          user: "1000"
+          env: [CLAUDE_CONFIG_REPO_URL, GITLAB_CONFIG_REPO_B64]
+          description: Sync ~/.claude from the dotfiles repo, then install plugins
+        - command: ["bash", "/home/agent/.local/bin/glab-login.sh"]
+          user: "1000"
+          env: [GITLAB_CLI_TOKEN]
+          description: Authenticate the glab CLI non-interactively

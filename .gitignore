@@ -1,3 +1,4 @@
 *.tar
 **/*.tar
 my-kit/spec.yaml
+claude-modified-kit/spec.yaml

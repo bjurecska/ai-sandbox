@@ -11,7 +11,7 @@ set -euo pipefail
 
 MARKETPLACE_URL="https://github.com/bjurecska/ai-plugins.git"
 MARKETPLACE_NAME="ai-plugins"
-PLUGIN_NAME="agy-delegate"
+PLUGIN_NAME=""
 PLUGIN_ID="${PLUGIN_NAME}@${MARKETPLACE_NAME}"
 
 # Startup output is captured nowhere by sbx — keep a log so boot-time
@@ -64,6 +64,10 @@ fi
 # whose workspace happens to be the plugin repo itself.
 echo "setup-claude-plugins: registering marketplace ${MARKETPLACE_NAME}"
 claude plugin marketplace add "${MARKETPLACE_URL}" --scope user || true
+if [ -z "${PLUGIN_NAME}" ]; then
+  echo "setup-claude-plugins: no PLUGIN_NAME set; marketplace registered, skipping plugin install"
+  exit 0
+fi
 
 echo "setup-claude-plugins: installing ${PLUGIN_ID}"
 claude plugin install "${PLUGIN_ID}" --scope user || true
@@ -98,29 +102,3 @@ echo "setup-claude-plugins: installed at ${INSTALL_PATH}"
 # reinstall recreates the files with the original modes.
 chmod -R go-w "${INSTALL_PATH}"
 
-# The plugin's own installer writes ~/.local/bin/agy-bridge, a launcher that
-# pins the ABSOLUTE path of this installation's scripts/agy_bridge.sh. That
-# path carries the plugin version, so it changes on every plugin update, and
-# ~/.claude/plugins is not on a persisted volume — a recreated sandbox
-# reinstalls and needs a fresh pin. Re-running repins; that is by design.
-#
-# It refuses to run as root (the startup entry is user 1000) and needs no
-# --add-path: ~/.local/bin is already first on PATH in this image.
-#
-# Invoked via bash rather than relying on the executable bit surviving the
-# plugin checkout, and allowed to fail without taking the startup command with
-# it: the installer exits non-zero on a dozen separate refusal paths, none of
-# which should leave the sandbox looking unbooted.
-BRIDGE_INSTALLER="${INSTALL_PATH}/scripts/install.sh"
-if [ ! -f "${BRIDGE_INSTALLER}" ]; then
-  echo "setup-claude-plugins: no installer at ${BRIDGE_INSTALLER}; skipping agy-bridge" >&2
-  exit 0
-fi
-
-echo "setup-claude-plugins: running ${BRIDGE_INSTALLER}"
-if bash "${BRIDGE_INSTALLER}"; then
-  echo "setup-claude-plugins: agy-bridge installed"
-else
-  rc=$?
-  echo "setup-claude-plugins: agy-bridge installer exited ${rc} — see the output above" >&2
-fi

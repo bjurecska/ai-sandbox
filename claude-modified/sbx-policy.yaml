@@ -1,5 +1,5 @@
 # =============================================================================
-# SBX Network Policy Configuration - claude-agy
+# SBX Network Policy Configuration - claude-modified
 # =============================================================================
 # Project-specific network policy rules for the Claude Code + Antigravity CLI sandbox.
 # Global Docker registry rules are defined in root sbx-policy-global.yaml.
